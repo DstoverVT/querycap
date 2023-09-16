@@ -3,3 +3,5 @@ images/
 sounds/
 __pycache__/
 *.wav
+Pi/audio/
+Pi/images/
