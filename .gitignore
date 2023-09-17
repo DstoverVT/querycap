@@ -6,3 +6,6 @@ __pycache__/
 Pi/audio/
 Pi/images/
 .vscode/
+.DS_Store
+answer.mp3
+id_vthacks.pem

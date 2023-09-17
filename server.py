@@ -2,12 +2,10 @@ import os
 import pathlib
 from flask import Flask, request
 from werkzeug.utils import secure_filename
-from transformers import BlipProcessor, BlipForQuestionAnswering
-from PIL import Image
-import whisper
 from datetime import datetime
 from gtts import gTTS
-import vlc
+import requests
+import subprocess
 
 IMAGE_FOLDER = "./images"
 SOUND_FOLDER = "./sounds"
@@ -19,18 +17,13 @@ app.config['SOUND_FOLDER'] = SOUND_FOLDER
 pathlib.Path(IMAGE_FOLDER).mkdir(parents=True, exist_ok=True)
 pathlib.Path(SOUND_FOLDER).mkdir(parents=True, exist_ok=True)
 
-blip_processor = BlipProcessor.from_pretrained("Salesforce/blip-vqa-capfilt-large")
-blip_model = BlipForQuestionAnswering.from_pretrained("Salesforce/blip-vqa-capfilt-large")
 
-whisper_model = whisper.load_model('base')
-
-
-# @app.after_request
-# def after(response):
-#     print(response.status)
-#     print(response.headers)
-#     print(response.get_data())
-#     return response
+@app.after_request
+def after(response):
+    print(response.status)
+    print(response.headers)
+    print(response.get_data())
+    return response
 
 
 def check_for_file(name):
@@ -49,31 +42,33 @@ def check_for_form(name):
             "success": False,
             "message": f"'{name}' field not found in form.",
         }, 400
+    
 
-
-def process_image_sound(image_file, sound_file):
-    print('processing now')
-    question = whisper_model.transcribe(sound_file)['text']
-    print(f"QUESTION: {question}")
-
-    raw_image = Image.open(image_file).convert('RGB')
-
-    inputs = blip_processor(raw_image, question, return_tensors='pt')
-    out = blip_model.generate(**inputs)
-    answer = blip_processor.decode(out[0], skip_special_tokens=True)
-    print(f"ANSWER: {answer}")
-
-    inputs = blip_processor(raw_image, "What is in this image?", return_tensors='pt')
-    out = blip_model.generate(**inputs)
-    print(f"DEBUG DESCRIPTION OF IMAGE <{image_file}>: {blip_processor.decode(out[0], skip_special_tokens=True)}")
-
+def generate_sound(answer):
     print("Saving audio...")
     tts = gTTS(answer)
     tts.save("answer.mp3")
 
-    print("Playing audio...")
-    p = vlc.MediaPlayer(f"file://{os.getcwd()}/answer.mp3")
-    p.play()
+    subprocess.call(["afplay", "answer.mp3"])
+    
+
+def send_image_sound(img_path, sound_path):
+    '''Send image and sound file to AWS server through SSH tunnel.''' 
+    # ssh -o "ServerAliveInterval 60" -L 5001:ec2-18-190-153-119.us-east-2.compute.amazonaws.com:5000
+    files = {
+            "image": open(img_path, "rb"),
+            "sound": open(sound_path, "rb"),
+    }
+    URL = 'http://127.0.0.1:5001/send_image'
+    response = requests.post(URL, files=files)
+    response_json = response.json()
+
+    SUCCESS = 200
+    if response.status_code == SUCCESS:
+        print("Data sent to model.")
+        generate_sound(response_json['answer'])
+    else:
+        print(f"Error sending POST to {URL}")
 
 
 @app.route("/send_image", methods=['POST'])
@@ -95,7 +90,7 @@ def send_image():
     sound_filepath = os.path.join(app.config['SOUND_FOLDER'], sound_filename)
     sound.save(sound_filepath)
 
-    process_image_sound(image_filepath, sound_filepath)
+    send_image_sound(image_filepath, sound_filepath)
 
     return {
         "success": True,
