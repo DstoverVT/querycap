@@ -18,6 +18,8 @@ class QueryCapPi:
 
         # Video setup
         self.video = cv2.VideoCapture(-1)
+        self.video.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
         self.use_video = True
 
         if not self.video.isOpened():
@@ -37,7 +39,7 @@ class QueryCapPi:
                 self.image_capture()
                 # audio_capture waits for another "enter" press before done
                 self.audio_capture()
-                self.post_request()
+                # self.post_request()
 
     def post_request(self):
         """Sends image and audio files to server"""
@@ -56,8 +58,10 @@ class QueryCapPi:
     def image_capture(self):
         """Capture frames from webcam."""
         if self.use_video:
+            # Need to call read once to flush buffer
+            self.video.read()
             ret, frame = self.video.read()
-            # Save 1 frame per second to path
+            
             if ret:
                 print(f"saving image")
                 cv2.imwrite(f"{self.cap_path}/cap.png", frame)
