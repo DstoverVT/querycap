@@ -4,17 +4,24 @@ import pyaudio
 import wave
 import requests
 import threading
+import RPi.GPIO as GPIO
 
 
 class QueryCapPi:
     """Controls RPi image and audio for QueryCap."""
 
+    # Pin 15 in BCM numbering (pin 10 on header pin)
+    BUTTON_PIN = 15
     user_input = None
 
     def __init__(self, audio_path, image_path, server_url):
         self.cap_path = image_path
         self.query_path = audio_path
         self.server = server_url
+
+        # Raspberry Pi GPIO setup
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(self.BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
         # Video setup
         self.video = cv2.VideoCapture(-1)
@@ -33,13 +40,13 @@ class QueryCapPi:
         """Captures and image and then records the user's question"""
         print("Press Enter to start")
         while True:
-            key = input()
-            # Start image and audio capture on "enter" key press
-            if key is not None:
+            # key = input()
+            # Start image and audio capture on button press (low)
+            if GPIO.input(self.BUTTON_PIN) == GPIO.LOW:
                 self.image_capture()
                 # audio_capture waits for another "enter" press before done
                 self.audio_capture()
-                # self.post_request()
+                self.post_request()
 
     def post_request(self):
         """Sends image and audio files to server"""
@@ -61,7 +68,7 @@ class QueryCapPi:
             # Need to call read once to flush buffer
             self.video.read()
             ret, frame = self.video.read()
-            
+
             if ret:
                 print(f"saving image")
                 cv2.imwrite(f"{self.cap_path}/cap.png", frame)
@@ -90,15 +97,11 @@ class QueryCapPi:
         input_thread.start()
 
         print("capturing audio...")
-        while True:
+        # Record while button is pressed (low)
+        while GPIO.input(self.BUTTON_PIN) == GPIO.LOW:
             # Start recording audio
             audio_frame = audio_stream.read(audio_chunk)
             recording.append(audio_frame)
-
-            # Stop recording audio on "enter" key press
-            if self.user_input is not None:
-                self.user_input = None
-                break
         print("Done")
 
         audio_stream.stop_stream()
@@ -120,7 +123,8 @@ class QueryCapPi:
 if __name__ == "__main__":
     image_path = "images"
     audio_path = "audio"
-    URL = "http://172.29.103.161:5000/send_image"
+    # URL = "http://172.29.103.161:5000/send_image"
+    URL = "http://172.29.54.7:5000/send_image"
 
     if not os.path.exists(image_path):
         os.makedirs(image_path)
